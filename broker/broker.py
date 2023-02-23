@@ -3,6 +3,8 @@ from flask import request
 import threading
 from flask_sqlalchemy import SQLAlchemy
 
+broker_manage_address = '172.17.0.2:5000'
+
 username = 'mattie'
 password = 'password'
 database = 'psqlqueue'
@@ -314,6 +316,7 @@ if __name__ == "__main__":
         db.create_all()
         # crash recovery
         # heartbeat threads
+        
 
     # launch request handler
     app.run(host='0.0.0.0',debug=True, threaded=True, processes=1)

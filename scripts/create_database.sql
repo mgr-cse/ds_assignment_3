@@ -1,0 +1,3 @@
+CREATE DATABASE psqlqueue;
+CREATE USER mattie WITH PASSWORD 'password';
+GRANT ALL PRIVILEGES ON DATABASE psqlqueue TO mattie;

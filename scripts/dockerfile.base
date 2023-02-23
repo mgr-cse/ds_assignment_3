@@ -1,0 +1,10 @@
+FROM ubuntu:22.04
+COPY scripts/create_database.sql /
+RUN apt-get update
+RUN apt-get upgrade -y
+RUN apt-get install -y sudo init
+RUN useradd -m mattie -G sudo -s /bin/bash
+RUN echo 'mattie:8bitguy' | chpasswd
+ARG path
+RUN mkdir -p $path
+RUN chown mattie $path

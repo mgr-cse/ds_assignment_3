@@ -9,8 +9,9 @@ docker run -itd --name $NAME --ip $IP --privileged -v $PWD/:$PWD/:rw localhost/d
 sleep 10
 
 # run application
-docker exec -it $NAME /bin/bash -c "sudo -iu mattie /bin/bash -c 'cd source/repos/ds_assignment_2; source 01-env/bin/activate; python $FILE'"
+docker exec -it $NAME /bin/bash -c "sudo -iu mattie /bin/bash -c 'cd $PWD; source 01-env/bin/activate; python $FILE'"
 
+echo stopping container
 # clear container on quit
 docker stop $NAME
 docker rm $NAME
