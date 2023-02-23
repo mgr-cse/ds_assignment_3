@@ -1,4 +1,4 @@
-HOST=127.0.0.1
+HOST=172.17.0.3
 PORT=$1
 
 curl -XGET "http://${HOST}:${PORT}/topics" 

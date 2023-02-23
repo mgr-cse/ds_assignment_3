@@ -11,71 +11,19 @@ db_port = '5432'
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = f"postgresql://{username}:{password}@localhost:{db_port}/{database}"
 
-# some dummy brokers
-broker_ips = [
-    '10.0.0.101',
-    '10.0.0.102',
-    '10.0.0.103',
-    '10.0.0.104'
-]
-
-broker_ports = [
-    5000,
-    5000,
-    5000,
-    5000
-]
-
 # queue database structures
 db = SQLAlchemy(app)
- 
-class Producer(db.Model):
-    id = db.Column(db.Integer, primary_key = True)
-    topic_id = db.Column(db.Integer, db.ForeignKey('topic.id'))
-    # have a partition_id, just for preference
-    partition_id = db.Column(db.Integer)
-
-class Broker(db.Model):
-    id = db.Column(db.Integer, primary_key = True)
-    ip = db.Column(db.String(255))
-    port = db.Column(db.Integer)
-    health = db.Column(db.Integer)
-
-    # list of partitions that broker handles
-    partitions = db.relationship('Partition', backref='broker')
-
-    
-class Consumer(db.Model):
-    id = db.Column(db.Integer, primary_key = True)
-    topic_id = db.Column(db.Integer, db.ForeignKey('topic.id'))
-    offset = db.Column(db.Integer, nullable=False)
-    timestamp = db.Column(db.Time)
-    health = db.Column(db.Integer)
-
-class Partition(db.Model):
-    id = db.Column(db.Integer, primary_key = True)
-    broker_id = db.Column(db.Integer, db.ForeignKey('broker.id'))
-    topic_id = db.Column(db.Integer, db.ForeignKey('topic.id'))
-
-
-class Topic(db.Model):
-    id = db.Column(db.Integer, primary_key = True)
-    name = db.Column(db.String(255), nullable=False, unique=True)
-    
-    producers  = db.relationship('Producer', backref='topic')
-    consumers  = db.relationship('Consumer', backref='topic')
-    messages   = db.relationship('Message', backref='topic')
-    partitions = db.relationship('Partition', backref='topic')
 
 class Message(db.Model):
     id = db.Column(db.Integer, primary_key = True)
-    topic_id = db.Column(db.Integer, db.ForeignKey('topic.id'))
-    partition_id = db.Column(db.Integer, db.ForeignKey('partition.id'))
+    topic_id = db.Column(db.Integer, nullable=False)
+    partition_id = db.Column(db.Integer, nullable=False)
     message_content = db.Column(db.String(255))
+    
     # producer sends some info to uniquely identify the message
-    producer_client = db.Column(db.String(255))
-    timestamp = db.Column(db.Float)
-    random_string = db.Column(db.String(257))
+    producer_client = db.Column(db.String(255), nullable=False)
+    timestamp = db.Column(db.Float, nullable=False)
+    random_string = db.Column(db.String(257), nullable=False)
 
 # debugging functions
 def print_thread_id():
@@ -366,13 +314,6 @@ if __name__ == "__main__":
         db.create_all()
         # crash recovery
         # heartbeat threads
-        for ip, port in zip(broker_ips, broker_ports):
-            broker = Broker.query.filter_by(ip=ip).first()
-            if broker is None:
-                broker = Broker(ip=ip, port=port, health=1)
-                db.session.add(broker)
-        # commit
-        db.session.commit()
 
     # launch request handler
     app.run(host='0.0.0.0',debug=True, threaded=True, processes=1)
