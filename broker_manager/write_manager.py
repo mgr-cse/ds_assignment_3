@@ -1,12 +1,19 @@
 from flask import Flask
 from flask import request
-import threading
 from flask_sqlalchemy import SQLAlchemy
+
+import random
+import threading
+import time
+import requests
 
 username = 'mattie'
 password = 'password'
 database = 'psqlqueue'
 db_port = '5432'
+
+max_tries = 3
+try_timeout = 2
 
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = f"postgresql://{username}:{password}@localhost:{db_port}/{database}"
@@ -30,7 +37,6 @@ class Broker(db.Model):
     # list of partitions that broker handles
     partitions = db.relationship('Partition', backref='broker')
 
-    
 class Consumer(db.Model):
     id = db.Column(db.Integer, primary_key = True)
     topic_id = db.Column(db.Integer, db.ForeignKey('topic.id'))
@@ -148,7 +154,7 @@ def topic_get_partitions():
             "partition_ids": partitions
         }
     except:
-        return return_message('Failure','Error while querying/commiting database')
+        return return_message('failure','Error while querying/commiting database')
 
 @app.route('/broker/heartbeat',methods=['POST'])
 def broker_heartbeat():
@@ -225,7 +231,7 @@ def producer_register_request():
             "producer_id": producer.id
         }
     except:
-        return return_message('Failure','Error while querying/commiting database')
+        return return_message('failure','Error while querying/commiting database')
 
 @app.route('/producer/produce',methods=['POST'])
 def producer_enqueue():
@@ -237,13 +243,18 @@ def producer_enqueue():
     topic_name = None
     producer_id = None
     message_content = None
+
     prod_client = None
+    timestamp = None
+    random_string = None
     try:
         receive = request.json
         topic_name = receive['topic']
         producer_id = receive['producer_id']
         message_content = receive['message']
         prod_client = receive['prod_client']
+        timestamp = receive['timestamp']
+        random_string = receive['random_string']
     except:
         return return_message('failure', 'Error while parsing request')
     
@@ -255,30 +266,69 @@ def producer_enqueue():
         if producer.topic.name != topic_name:
             return return_message('failure', 'producer_id and topic do not match')
         
-        message = Message(topic_id=producer.topic.id, message_content=message_content, producer_client=prod_client)
-        db.session.add(message)
+        if producer.partition_id == -1:
+            # produce to any random partition
+            partitions = producer.topic.partitions
+            for _ in range(max_tries):
+                random_choice = random.randint(0, len(partitions)-1)
+                partition = partitions[random_choice]
+                ip = partition.broker.ip
+                port = partition.broker.port
+
+                request_content = {
+                    "topic_id": producer.topic.id,
+                    "partition_id": partition.id,
+                    "message_content": message_content,
+                    "producer_client": prod_client,
+                    "timestamp": timestamp,
+                    "random_string": random_string
+                }
+                res = requests.post('http://' + ip + ":" + str(port) + '/store_message', json=request_content)
+                if res.ok:
+                    try:
+                        response = res.json()
+                        print(response)
+                        if response['status'] == 'success':
+                            db.session.commit()
+                            return return_message('success')
+                    except:
+                        print('exception occured in parsing response')
+                time.sleep(try_timeout)
+                partition.broker.health = 0
+                # write ahead
+                db.session.flush()
+
+        else:
+            # produce to that specific partition
+            partition = Partition.query.filter_by(id=producer.partition_id).first()
+            ip = partition.broker.ip
+            port = partition.broker.port
+
+            request_content = {
+                "topic_id": producer.topic.id,
+                "partition_id": partition.id,
+                "message_content": message_content,
+                "producer_client": prod_client,
+                "timestamp": timestamp,
+                "random_string": random_string
+            }
+            res = requests.post('http://' + ip + ":" + str(port) + '/store_message', json=request_content)
+            if res.ok:
+                try:
+                    response = res.json()
+                    if response['status'] == 'success':
+                        db.session.commit()
+                        return return_message('success')
+                except:
+                    pass
+            partition.broker.health = 0
+        
+        db.session.flush()
         db.session.commit()
-        return return_message('success')
+        return return_message('failure', 'can not commit to a broker')
+            
     except:
-        return return_message('Failure','Error while querying/commiting database')
-   
-@app.route('/producer/client_size',methods=['GET'])
-def prod_client_size():
-    print_thread_id()
-    prod_client_name = None
-    try:
-        prod_client_name = request.args.get('prod_client')
-    except:
-        return return_message('failure', 'Error while parsing request')
-    
-    try:
-        message_count = Message.query.filter_by(producer_client=prod_client_name).count()
-        return {
-            "status": "success",
-            "count": message_count
-        }
-    except:
-        return return_message('Failure','Error while querying/commiting database')
+        return return_message('failure','Error while querying/commiting database')
 
 if __name__ == "__main__": 
     # 
