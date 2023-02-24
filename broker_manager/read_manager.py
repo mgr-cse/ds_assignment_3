@@ -112,7 +112,7 @@ def topic_get_partitions():
             "partition_ids": partitions
         }
     except:
-        return return_message('Failure','Error while querying/commiting database')
+        return return_message('failure','Error while querying/commiting database')
 
 
 @app.route('/consumer/register', methods=['POST'])
@@ -158,7 +158,7 @@ def consumer_register_request():
             "producer_id": consumer.id
         }
     except:
-        return return_message('Failure','Error while querying/commiting database')
+        return return_message('failure','Error while querying/commiting database')
 
 @app.route('/consumer/consume',methods=['GET'])
 def consumer_dequeue():
@@ -196,7 +196,7 @@ def consumer_dequeue():
                 "offset": message.id
             }
     except:
-        return return_message('Failure','Error while querying/commiting database')
+        return return_message('failure','Error while querying/commiting database')
     
 
 @app.route('/consumer/set_offset',methods=['POST'])
@@ -224,7 +224,7 @@ def consumer_set_offset():
         db.session.commit()
         return return_message('success')
     except:
-        return return_message('Failure','Error while querying/commiting database')    
+        return return_message('failure','Error while querying/commiting database')    
 
 @app.route('/size',methods=['GET'])
 def consumer_size():
