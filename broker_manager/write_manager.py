@@ -11,21 +11,6 @@ db_port = '5432'
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = f"postgresql://{username}:{password}@localhost:{db_port}/{database}"
 
-# some dummy brokers
-broker_ips = [
-    '10.0.0.101',
-    '10.0.0.102',
-    '10.0.0.103',
-    '10.0.0.104'
-]
-
-broker_ports = [
-    5000,
-    5000,
-    5000,
-    5000
-]
-
 # queue database structures
 db = SQLAlchemy(app)
  
@@ -34,6 +19,7 @@ class Producer(db.Model):
     topic_id = db.Column(db.Integer, db.ForeignKey('topic.id'))
     # have a partition_id, just for preference
     partition_id = db.Column(db.Integer)
+    health = db.Column(db.Integer)
 
 class Broker(db.Model):
     id = db.Column(db.Integer, primary_key = True)
@@ -122,11 +108,9 @@ def topic_register_request():
         
         # commit transaction
         db.session.commit()
-
+        return return_message('success', 'topic ' + topic.name + ' created sucessfully')
     except:
         return return_message('failure', 'Error while querying/comitting to database')
-    
-    return return_message('success', 'topic ' + topic.name + ' created sucessfully')
 
 @app.route('/topics', methods=['GET'])
 def topic_get_request():
@@ -137,10 +121,67 @@ def topic_get_request():
         topics = Topic.query.all()
         for t in topics:
             topics_list.append(t.name)
-        db.session.commit()
         return return_message('success', topics_list)
     except: 
         return return_message('failure', 'Error while listing topics')
+
+@app.route('/topics/partitions', methods=['GET'])
+def topic_get_partitions():
+    print_thread_id()
+    topic_name = None
+    try:
+        topic_name = request.args.get('topic_name')
+    except:
+        return return_message('failure', 'Error while parsing request')
+    
+    try:
+        topic = Topic.query.filter_by(name=topic_name).first()
+        if topic is None:
+            return return_message('failure', 'topic does not exist')
+        
+        partitions = []
+        for p in topic.partitions:
+            partitions.append(p.id)
+
+        return {
+            "status": "success",
+            "partition_ids": partitions
+        }
+    except:
+        return return_message('Failure','Error while querying/commiting database')
+
+@app.route('/broker/heartbeat',methods=['POST'])
+def broker_heartbeat():
+    print_thread_id()
+    content_type = request.headers.get('Content-Type')
+    if content_type != 'application/json':
+        return return_message('failure', 'Content-Type not supported')
+    
+    ip = None
+    port = None
+    try:
+        receive = request.json
+        ip = receive['ip']
+        port = receive['port']
+    except:
+        return return_message('failure', 'Error While Parsing json')
+    
+    # find if broker already exists
+    try:
+        broker = Broker.query.filter_by(ip=ip, port=port).first()
+        if broker is not None:
+            broker.health = 1
+            db.session.flush()
+            db.session.commit()
+            return return_message('success', 'broker heartbeat received')
+    
+        broker = Broker(ip=ip, port=port, health=1)
+        db.session.add(broker)
+        db.session.flush()
+        db.session.commit()
+        return return_message('success', 'new broker registered')
+    except:
+        return return_message('failure', 'Error while querying/comitting to database')
 
 @app.route('/producer/register',methods=['POST'])
 def producer_register_request():
@@ -167,48 +208,21 @@ def producer_register_request():
             return return_message('failure', 'Topic does not exist')
 
         if  partition_id is None:
-            producer = Producer(topic_id=topic.id)
+            producer = Producer(topic_id=topic.id, partition_id=-1, health=1)
         else:
             # find if partition exists
             partition = Partition.query.filter_by(id=partition_id).first()
             if partition is None:
-                return return_message('failure', 'Topic does not exist')
+                return return_message('failure', 'Partition does not exist')
             
-            producer = Producer(topic_id=topic.id, partition_id=partition_id)
+            producer = Producer(topic_id=topic.id, partition_id=partition_id, health=1)
 
         db.session.add(producer)
+        db.session.flush()
         db.session.commit()
         return {
             "status": "success",
             "producer_id": producer.id
-        }
-    except:
-        return return_message('Failure','Error while querying/commiting database')
-
-@app.route('/consumer/register', methods=['POST'])
-def consumer_register_request():
-    print_thread_id()
-    content_type = request.headers.get('Content-Type')
-    if content_type != 'application/json':
-        return return_message('failure', 'Content-Type not supported')
-    topic_name = None
-    try:
-        receive = request.json
-        topic_name = receive['topic']
-    except:
-        return return_message('failure', 'Error while parsing request')
-        
-    # query
-    try:
-        topic = Topic.query.filter_by(name=topic_name).first()
-        if topic is None:
-            return return_message('failure', 'Topic does not exist')
-        consumer = Consumer(topic_id=topic.id, offset=-1)
-        db.session.add(consumer)
-        db.session.commit()
-        return {
-            "status": "success",
-            "consumer_id": consumer.id
         }
     except:
         return return_message('Failure','Error while querying/commiting database')
@@ -247,101 +261,7 @@ def producer_enqueue():
         return return_message('success')
     except:
         return return_message('Failure','Error while querying/commiting database')
-
-@app.route('/consumer/consume',methods=['GET'])
-def consumer_dequeue():
-    print_thread_id()   
-    topic_name = None
-    consumer_id = None
-    try:
-        topic_name = request.args.get('topic')
-        consumer_id = request.args.get('consumer_id')
-        consumer_id = int(consumer_id)
-    except:
-        return return_message('failure', 'Error while parsing request')
-    
-    try:
-        consumer = Consumer.query.filter_by(id=consumer_id).first()
-        if consumer_id is None:
-            return return_message('failure', 'consumer_id does not exist')
-
-        if consumer.topic.name != topic_name:
-            return return_message('failure', 'consumer_id and topic do not match')
-        # the tuff query
-        message = Message.query.filter(Message.id > consumer.offset).filter_by(topic_id=consumer.topic.id).order_by(Message.id.asc()).first()
-        if message is None:
-            return return_message('failure', 'no more messages')
-        
-        consumer.offset = message.id
-        db_lock = threading.Lock()
-        with db_lock:
-            db.session.commit()
-        
-        with db_lock:
-            return {
-                "status": "success",
-                "message": message.message_content,
-                "offset": message.id
-            }
-    except:
-        return return_message('Failure','Error while querying/commiting database')
-    
-
-@app.route('/consumer/set_offset',methods=['POST'])
-def consumer_set_offset():
-    print_thread_id()
-    content_type = request.headers.get('Content-Type')
-    if content_type != 'application/json':
-        return return_message('failure', 'Content-Type not supported')
-        
-    consumer_id = None
-    offset = None
-    try:
-        receive = request.json
-        consumer_id = receive['consumer_id']
-        offset = receive['offset']
-    except:
-        return return_message('failure', 'Error while parsing request')
-    
-    try:
-        consumer = Consumer.query.filter_by(id=consumer_id).first()
-        if consumer_id is None:
-            return return_message('failure', 'consumer_id does not exist')
-        
-        consumer.offset = offset
-        db.session.commit()
-        return return_message('success')
-    except:
-        return return_message('Failure','Error while querying/commiting database')    
-
-@app.route('/size',methods=['GET'])
-def consumer_size():
-    print_thread_id()   
-    topic_name = None
-    consumer_id = None
-    try:
-        topic_name = request.args.get('topic')
-        consumer_id = request.args.get('consumer_id')
-        consumer_id = int(consumer_id)
-    except:
-        return return_message('failure', 'Error while parsing request')
-    
-    try:
-        consumer = Consumer.query.filter_by(id=consumer_id).first()
-        if consumer_id is None:
-            return return_message('failure', 'consumer_id does not exist')
-
-        if consumer.topic.name != topic_name:
-            return return_message('failure', 'consumer_id and topic do not match')
-        # the tuff query
-        messages = Message.query.filter(Message.id > consumer.offset).filter_by(topic_id=consumer.topic.id).count()
-        return {
-            "status": "success",
-            "size": messages
-        }
-    except:
-        return return_message('failure', 'Error while querying/commiting database')
-    
+   
 @app.route('/producer/client_size',methods=['GET'])
 def prod_client_size():
     print_thread_id()
@@ -364,15 +284,6 @@ if __name__ == "__main__":
     # 
     with app.app_context():
         db.create_all()
-        # crash recovery
-        # heartbeat threads
-        for ip, port in zip(broker_ips, broker_ports):
-            broker = Broker.query.filter_by(ip=ip).first()
-            if broker is None:
-                broker = Broker(ip=ip, port=port, health=1)
-                db.session.add(broker)
-        # commit
-        db.session.commit()
 
     # launch request handler
-    app.run(host='0.0.0.0',debug=True, threaded=True, processes=1)
+    app.run(host='0.0.0.0',debug=False, threaded=True, processes=1)
