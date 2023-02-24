@@ -1,6 +1,7 @@
 from flask import Flask
 from flask import request
 from flask_sqlalchemy import SQLAlchemy
+import traceback
 
 import threading
 import time
@@ -61,13 +62,14 @@ def topic_register_request():
     random_string = None
     try:
         receive = request.json
-        topic_id = receive['topic_name']
+        topic_id = receive['topic_id']
         partition_id = receive['partition_id']
         message_content = receive['message_content']
         producer_client = receive['producer_client']
         timestamp = receive['timestamp']
         random_string = receive['random_string']
     except:
+        print('parsing error')
         return return_message('failure', 'Error While Parsing json')
     
     # database
@@ -75,7 +77,7 @@ def topic_register_request():
         # check if the message was already written
         message = Message.query.filter_by(producer_client=producer_client, timestamp=timestamp, random_string=random_string).first()
         if message is not None:
-            return return_message('sucess')
+            return return_message('success')
 
         # write the messaage
         message = Message(
@@ -86,15 +88,18 @@ def topic_register_request():
                 timestamp=timestamp,
                 random_string = random_string
             )
-
+        
+        print('reached')
         # write ahead
         db.session.add(message)
-        db.flush()
+        db.session.flush()
         
         # commit transaction
         db.session.commit()
         return return_message('success')
     except:
+        print('database error')
+        traceback.print_exc()
         return return_message('failure', 'Error while querying/comitting to database')
 
 @app.route('/retreive_messages', methods=['GET'])
@@ -130,7 +135,7 @@ def topic_get_request():
             "messages": message_list
         }
     except:
-        return return_message('Failure','Error while querying/commiting database')
+        return return_message('failure','Error while querying/commiting database')
 
 # heartbeat function
 def heartbeat(beat_time):
@@ -145,7 +150,10 @@ def heartbeat(beat_time):
         s.close()
 
         # send ip to broker_manager
-        res = requests.post('http://' + broker_manager_address + '/broker/heartbeat', json={"ip": ip, "port": 5000})
+        try:
+            res = requests.post('http://' + broker_manager_address + '/broker/heartbeat', json={"ip": ip, "port": 5000})
+        except:
+            print('can not make connection')
         time.sleep(beat_time)
 
 if __name__ == "__main__":
