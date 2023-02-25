@@ -30,3 +30,8 @@ class Broker(db.Model):
     
     health = db.Column(db.Integer)
     timestamp = db.Column(db.Float)
+
+class Partition(db.Model):
+    id = db.Column(db.Integer, primary_key = True)
+    broker_id = db.Column(db.Integer, db.ForeignKey('broker.id'))
+    topic_id = db.Column(db.Integer, db.ForeignKey('topic.id'))
