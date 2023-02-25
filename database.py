@@ -60,6 +60,10 @@ class Topic(db.Model):
     partitions = db.relationship('Partition', backref='topic')
     consumers = db.relationship('Consumer', backref='topic')
 
+    def from_dict(self, obj: Dict):
+        for k in obj:
+            setattr(self, k, obj[k])
+
 class Replica(db.Model):
     id = db.Column(db.Integer, primary_key = True)
     ip = db.Column(db.String(255))
