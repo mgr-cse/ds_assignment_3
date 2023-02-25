@@ -72,4 +72,8 @@ class Replica(db.Model):
     health = db.Column(db.Integer)
     timestamp = db.Column(db.Float)
 
+    def from_dict(self, obj: Dict):
+        for k in obj:
+            setattr(self, k, obj[k])
+
 
