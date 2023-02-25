@@ -35,3 +35,11 @@ class Partition(db.Model):
     id = db.Column(db.Integer, primary_key = True)
     broker_id = db.Column(db.Integer, db.ForeignKey('broker.id'))
     topic_id = db.Column(db.Integer, db.ForeignKey('topic.id'))
+
+class Topic(db.Model):
+    id = db.Column(db.Integer, primary_key = True)
+    name = db.Column(db.String(255), nullable=False, unique=True)
+    
+    producers  = db.relationship('Producer', backref='topic')
+    partitions = db.relationship('Partition', backref='topic')
+    consumers = db.relationship('Consumer', backref='topic')
