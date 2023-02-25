@@ -12,6 +12,10 @@ class Producer(db.Model):
     health = db.Column(db.Integer)
     timestamp = db.Column(db.Float)
 
+    def from_dict(self, obj: Dict):
+        for k in obj:
+            setattr(self, k, obj[k])
+
     def as_dict(self):
        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
