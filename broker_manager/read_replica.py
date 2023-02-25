@@ -332,7 +332,6 @@ def commit_metadata(response):
         print('commit_metadata: error while adding metadata to database')
     return False
 
-
 def sync_metadata():
     try:
         res = requests.get('http://' + read_primary_address + '/metadata')
@@ -344,54 +343,6 @@ def sync_metadata():
         else: print('invalid response code received')
     except:
         print('can not make request for syncing metadata')
-    return False
-
-def sync_broker_messages(broker: Broker):
-    offset = 0
-    ip = None
-    port = None
-    try:
-        if len(broker.messages) > 0:
-            offset = broker.messages[-1].broker_message_id
-        ip = broker.ip
-        port = broker.port
-    except:
-        traceback.print_exc()
-        print('error in getting broker message offset/ip/port')
-        return False
-    
-    response = None
-    try:
-        res = requests.get(f'http://{ip}:{port}/retreive_messages', params={"offset":offset})
-        if res.ok:
-            response = res.json()
-            if response['status'] != 'success':
-                print('broker sync: receieved failure')
-                return False
-    except:
-        print('broker sync: can not make a connection')
-        return False
-
-    # write messages to database
-    try:
-        for m in response['messages']:
-            message = Message(
-                topic_id=m['topic_id'],
-                partition_id=m['partition_id'],
-                message_content=m['message_content'],
-                producer_client=m['producer_client'],
-                timestamp=m['timestamp'],
-                random_string=m['random_string'],
-                broker_id=broker.id,
-                broker_message_id=m['id']
-            )
-            db.session.add(message)
-            db.session.flush()
-        db.session.commit()
-        return True
-    except:
-        traceback.print_exc()
-        print('Broker sync: can not write messages to database')
     return False
 
 def sync_messages():
@@ -443,7 +394,6 @@ def sync_messages():
     except:
         print('sync messages: error while commiting to database')
     return False
-
 
 # heartbeat function
 def heartbeat(beat_time):
