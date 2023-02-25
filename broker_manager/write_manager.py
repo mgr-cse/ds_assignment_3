@@ -6,6 +6,7 @@ import random
 import threading
 import time
 import requests
+import traceback
 
 username = 'mattie'
 password = 'password'
@@ -37,11 +38,17 @@ class Broker(db.Model):
     # list of partitions that broker handles
     partitions = db.relationship('Partition', backref='broker')
 
+    def as_dict(self):
+       return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
 
 class Partition(db.Model):
     id = db.Column(db.Integer, primary_key = True)
     broker_id = db.Column(db.Integer, db.ForeignKey('broker.id'))
     topic_id = db.Column(db.Integer, db.ForeignKey('topic.id'))
+
+    def as_dict(self):
+       return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
 
 class Topic(db.Model):
@@ -50,6 +57,9 @@ class Topic(db.Model):
     
     producers  = db.relationship('Producer', backref='topic')
     partitions = db.relationship('Partition', backref='topic')
+
+    def as_dict(self):
+       return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
 
 # debugging functions
@@ -65,42 +75,7 @@ def return_message(status:str, message=None):
 
 # functions for handelling each endpoint
 
-@app.route('/topics', methods=['POST'])
-def topic_register_request():
-    print_thread_id()
-    content_type = request.headers.get('Content-Type')
-    if content_type != 'application/json':
-        return return_message('failure', 'Content-Type not supported')
-
-    # parse content
-    topic_name = None
-    try:
-        receive = request.json
-        topic_name = receive['topic_name']
-    except:
-        return return_message('failure', 'Error While Parsing json')
-    
-    # database
-    try:
-        if Topic.query.filter_by(name=topic_name).first() is not None:
-            return return_message('failure', 'Topic already exists')  
-        
-        topic = Topic(name=topic_name)
-        db.session.add(topic)
-        db.session.flush()
-
-        # create a partition in each broker
-        brokers = Broker.query.filter_by(health=1)
-        for b in brokers:
-            partition = Partition(topic_id=topic.id, broker_id=b.id)
-            db.session.add(partition)
-        
-        # commit transaction
-        db.session.commit()
-        return return_message('success', 'topic ' + topic.name + ' created sucessfully')
-    except:
-        return return_message('failure', 'Error while querying/comitting to database')
-
+# topic information getters
 @app.route('/topics', methods=['GET'])
 def topic_get_request():
     print_thread_id()
@@ -138,6 +113,43 @@ def topic_get_partitions():
         }
     except:
         return return_message('failure','Error while querying/commiting database')
+
+# producer specific endpoints
+@app.route('/topics', methods=['POST'])
+def topic_register_request():
+    print_thread_id()
+    content_type = request.headers.get('Content-Type')
+    if content_type != 'application/json':
+        return return_message('failure', 'Content-Type not supported')
+
+    # parse content
+    topic_name = None
+    try:
+        receive = request.json
+        topic_name = receive['topic_name']
+    except:
+        return return_message('failure', 'Error While Parsing json')
+    
+    # database
+    try:
+        if Topic.query.filter_by(name=topic_name).first() is not None:
+            return return_message('failure', 'Topic already exists')  
+        
+        topic = Topic(name=topic_name)
+        db.session.add(topic)
+        db.session.flush()
+
+        # create a partition in each broker
+        brokers = Broker.query.filter_by(health=1).all()
+        for b in brokers:
+            partition = Partition(topic_id=topic.id, broker_id=b.id)
+            db.session.add(partition)
+        
+        # commit transaction
+        db.session.commit()
+        return return_message('success', 'topic ' + topic.name + ' created sucessfully')
+    except:
+        return return_message('failure', 'Error while querying/comitting to database')
 
 @app.route('/broker/heartbeat',methods=['POST'])
 def broker_heartbeat():
@@ -312,6 +324,29 @@ def producer_enqueue():
             
     except:
         return return_message('failure','Error while querying/commiting database')
+
+
+@app.route('/metadata', methods=['GET'])
+def get_metadata():
+    print_thread_id()
+    try:
+        brokers = Broker.query.order_by(Broker.id).all()
+        brokers = [ b.as_dict() for b in brokers ]
+        topics = Topic.query.order_by(Topic.id).all()
+        topics = [ t.as_dict() for t in topics ]
+        partitions = Partition.query.order_by(Partition.id).all()
+        partitions = [ p.as_dict() for p in partitions ]
+
+        return {
+            "status": "success",
+            "brokers": brokers,
+            "topics": topics,
+            "partitions": partitions
+        }
+    except:
+        traceback.print_exc()
+        return return_message('failure', 'error in querying database')
+
 
 if __name__ == "__main__": 
     # 

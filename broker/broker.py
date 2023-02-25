@@ -34,6 +34,9 @@ class Message(db.Model):
     timestamp = db.Column(db.Float, nullable=False)
     random_string = db.Column(db.String(257), nullable=False)
 
+    def as_dict(self):
+       return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
 # debugging functions
 def print_thread_id():
     print('Request handled by worker thread:', threading.get_native_id())
@@ -105,37 +108,23 @@ def topic_register_request():
 @app.route('/retreive_messages', methods=['GET'])
 def topic_get_request():
     print_thread_id()
-    min_id = None
+    offset = None
     try:
-        min_id = request.args.get('min_id')
-        min_id = int(min_id)
+        offset = request.args.get('offset')
+        offset = int(offset)
     except:
         return return_message('failure', 'Error while parsing request')
     
     try:
-        messages = Message.query.filter(Message.id > min_id).order_by(Message.id)
-        message_list = []
-        for m in messages:
-            message_list.append(
-                (
-                    m.topic_id,
-                    m.partition_id,
-                    m.message_content,
-                    m.producer_client,
-                    m.timestamp,
-                    m.random_string
-                )
-            )
-        max_id = 0
-        if len(messages) > 0:
-            max_id = messages[-1].id
+        messages = Message.query.filter(Message.id > offset).order_by(Message.id).all()
+        message_list = [ m.as_dict() for m in messages ]
+        
         return {
             "status": 'success',
-            "max_id": max_id,
-            "messages": message_list
+            "messages": message_list,
         }
     except:
-        return return_message('failure','Error while querying/commiting database')
+        return return_message('failure','Error while querying database')
 
 # heartbeat function
 def heartbeat(beat_time):

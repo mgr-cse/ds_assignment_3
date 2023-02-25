@@ -13,5 +13,5 @@ docker exec -it $NAME /bin/bash -c "sudo -iu mattie /bin/bash -c 'cd $PWD; sourc
 
 echo stopping container
 # clear container on quit
-#docker stop $NAME
-#docker rm $NAME
+docker stop $NAME
+docker rm $NAME
