@@ -192,3 +192,24 @@ def commit_metadata(response):
         traceback.print_exc()
         print('error occured while synching data')
         return False
+
+def sync_metadata():
+    try:
+        my_ip = self_ip_address()
+        content = None
+        if my_ip is not None:
+            content = {
+                "ip": my_ip,
+                "port": 5000
+            }
+        res = requests.get(f'http://{sync_address}/metadata/sync', params=content)
+        if res.ok:
+            response = res.json()
+            if response['status'] == 'success':
+                # commit the response to database
+                return commit_metadata(response)
+            else: print(response)
+        else: print('invalid response code received')
+    except:
+        print('can not make request for syncing metadata')
+    return False
