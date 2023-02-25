@@ -22,3 +22,11 @@ class Consumer(db.Model):
     
     health = db.Column(db.Integer)
     timestamp = db.Column(db.Float)
+
+class Broker(db.Model):
+    id = db.Column(db.Integer, primary_key = True)
+    ip = db.Column(db.String(255))
+    port = db.Column(db.Integer)
+    
+    health = db.Column(db.Integer)
+    timestamp = db.Column(db.Float)
