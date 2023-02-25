@@ -111,3 +111,84 @@ for t, p in zip(topics, partitions):
 
 for t in threads:
     t.join()
+
+import requests
+import time
+import traceback
+import socket
+
+from flask import Flask
+from flask_sqlalchemy import SQLAlchemy
+from __main__ import app, db, app_kill_event, sync_address, health_timeout
+app: Flask
+db: SQLAlchemy
+app_kill_event: bool
+sync_address: str
+
+from broker_manager.common.db_model import *
+
+# get self ip
+def self_ip_address():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except:
+        return None
+
+# 
+def commit_metadata(response):
+    try:
+        new_topics : Dict = response['topics']
+        new_consumers : Dict = response['consumers']
+        new_producers : Dict = response['producers']
+        new_brokers : Dict = response['brokers']
+        new_partitions : Dict = response['partitions']
+    except:
+        print('commit_database, invalid response received')
+        return False
+
+    try:
+        Partition.query.delete()
+        Broker.query.delete()
+        Producer.query.delete()
+        Consumer.query.delete()
+        Topic.query.delete()
+
+        for t in new_topics:
+            topic = Topic()
+            topic.from_dict(t)
+            db.session.add(topic)
+            db.session.flush()
+        
+        for t in new_producers:
+            producer = Producer()
+            producer.from_dict(t)
+            db.session.add(producer)
+            db.session.flush()
+
+        for t in new_consumers:
+            consumer = Consumer()
+            consumer.from_dict(t)
+            db.session.add(consumer)
+            db.session.flush()
+        
+        for t in new_brokers:
+            broker = Broker()
+            broker.from_dict(t)
+            db.session.add(broker)
+            db.session.flush()
+        
+        for t in new_partitions:
+            partition = Partition()
+            partition.from_dict(t)
+            db.session.add(partition)
+            db.session.flush()
+        
+        db.session.commit()
+    except:
+        traceback.print_exc()
+        print('error occured while synching data')
+        return False
