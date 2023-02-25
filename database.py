@@ -39,6 +39,10 @@ class Broker(db.Model):
     health = db.Column(db.Integer)
     timestamp = db.Column(db.Float)
 
+    def from_dict(self, obj: Dict):
+        for k in obj:
+            setattr(self, k, obj[k])
+
 class Partition(db.Model):
     id = db.Column(db.Integer, primary_key = True)
     broker_id = db.Column(db.Integer, db.ForeignKey('broker.id'))
