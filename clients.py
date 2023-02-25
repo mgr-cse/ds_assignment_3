@@ -13,3 +13,37 @@ class Consumer:
     
     def eprint(self, *args, **kwargs):
             print(self.name, *args, file=sys.stderr, **kwargs)
+
+    def change_replica(self):
+        # update list
+        self.eprint('replica change init')
+        
+        # request
+        res = None
+        try:
+            res = requests.get(self.hostname + 'replicas')
+        except:
+            self.eprint('can not communicate to primary for replicas')
+            return
+        
+        # parse the request
+        try:    
+            if  not res.ok:
+                self.eprint(f'invalid response code received: {res.status_code}')
+                return
+            response = res.json()
+            
+            if response['status'] != 'success':
+                self.eprint(response)
+                return
+        
+            for r in response['replicas']:
+                ip = r['ip']
+                port = r['port']
+                host = f'http://{ip}:{port}/'
+                if host != self.current_replica:
+                    self.current_replica = host
+                    return
+        except:
+            self.eprint('change replica: error while parsing response')
+        return
