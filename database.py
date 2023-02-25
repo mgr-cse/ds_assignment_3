@@ -43,3 +43,13 @@ class Topic(db.Model):
     producers  = db.relationship('Producer', backref='topic')
     partitions = db.relationship('Partition', backref='topic')
     consumers = db.relationship('Consumer', backref='topic')
+
+class Replica(db.Model):
+    id = db.Column(db.Integer, primary_key = True)
+    ip = db.Column(db.String(255))
+    port = db.Column(db.Integer)
+
+    health = db.Column(db.Integer)
+    timestamp = db.Column(db.Float)
+
+
