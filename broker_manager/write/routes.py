@@ -6,63 +6,13 @@ import traceback
 
 from flask import Flask, Request
 from __main__ import app, max_tries, try_timeout, request
+from broker_manager.common.routes import *
 from broker_manager.write.db_model import *
 
 app: Flask
 request: Request
 
-# debugging functions
-def print_thread_id():
-    print('Request handled by worker thread:', threading.get_native_id())
-
-def return_message(status:str, message=None):
-    content = dict()
-    content['status'] = status
-    if message is not None:
-        content['message'] = message
-    return content
-
 # functions for handelling each endpoint
-
-# topic information getters
-@app.route('/topics', methods=['GET'])
-def topic_get_request():
-    print_thread_id()
-    topics_list = []
-    try:
-        # database
-        topics = Topic.query.all()
-        for t in topics:
-            topics_list.append(t.name)
-        return return_message('success', topics_list)
-    except: 
-        return return_message('failure', 'Error while listing topics')
-
-@app.route('/topics/partitions', methods=['GET'])
-def topic_get_partitions():
-    print_thread_id()
-    topic_name = None
-    try:
-        topic_name = request.args.get('topic_name')
-    except:
-        return return_message('failure', 'Error while parsing request')
-    
-    try:
-        topic = Topic.query.filter_by(name=topic_name).first()
-        if topic is None:
-            return return_message('failure', 'topic does not exist')
-        
-        partitions = []
-        for p in topic.partitions:
-            partitions.append(p.id)
-
-        return {
-            "status": "success",
-            "partition_ids": partitions
-        }
-    except:
-        return return_message('failure','Error while querying/commiting database')
-
 # producer specific endpoints
 @app.route('/topics', methods=['POST'])
 def topic_register_request():
@@ -215,7 +165,7 @@ def producer_enqueue():
             partitions = producer.topic.partitions
             good_parts = []
             for p in partitions:
-                if partition.broker.health == 1:
+                if p.broker.health == 1:
                     good_parts.append(p)
             partitions = good_parts
             for _ in range(max_tries):
@@ -279,6 +229,7 @@ def producer_enqueue():
         return return_message('failure', 'can not commit to a broker')
             
     except:
+        traceback.print_exc()
         return return_message('failure','Error while querying/commiting database')
 
 @app.route('/metadata', methods=['GET'])

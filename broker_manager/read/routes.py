@@ -6,61 +6,12 @@ import traceback
 
 from flask import Flask, Request
 from __main__ import app, request
+
+from broker_manager.common.routes import *
 from broker_manager.read.db_model import *
 
 app: Flask
 request: Request
-
-# debugging functions
-def print_thread_id():
-    print('Request handled by worker thread:', threading.get_native_id())
-
-def return_message(status:str, message=None):
-    content = dict()
-    content['status'] = status
-    if message is not None:
-        content['message'] = message
-    return content
-
-# functions for handelling each endpoint
-@app.route('/topics', methods=['GET'])
-def topic_get_request():
-    print_thread_id()
-    topics_list = []
-    try:
-        # database
-        topics = Topic.query.all()
-        for t in topics:
-            topics_list.append(t.name)
-        return return_message('success', topics_list)
-    except: 
-        return return_message('failure', 'Error while listing topics')
-
-@app.route('/topics/partitions', methods=['GET'])
-def topic_get_partitions():
-    print_thread_id()
-    topic_name = None
-    try:
-        topic_name = request.args.get('topic_name')
-    except:
-        return return_message('failure', 'Error while parsing request')
-    
-    try:
-        topic = Topic.query.filter_by(name=topic_name).first()
-        if topic is None:
-            return return_message('failure', 'topic does not exist')
-        
-        partitions = []
-        for p in topic.partitions:
-            partitions.append(p.id)
-
-        return {
-            "status": "success",
-            "partition_ids": partitions
-        }
-    except:
-        return return_message('failure','Error while querying/commiting database')
-
 
 @app.route('/consumer/register', methods=['POST'])
 def consumer_register_request():
@@ -112,93 +63,47 @@ def consumer_dequeue():
     print_thread_id()   
     topic_name = None
     consumer_id = None
+    offset = None
+    consumer = None
     try:
         topic_name = request.args.get('topic')
         consumer_id = request.args.get('consumer_id')
         consumer_id = int(consumer_id)
+        offset = request.args.get('offset', 'not_given')
+        
+        consumer = Consumer.query.filter_by(id=consumer_id).first()
+        if consumer is None:
+             return return_message('failure', 'consumer_id does not exist')
+        if offset == 'not_given':
+            offset = consumer.offset
+        else: offset = int(offset)
     except:
-        return return_message('failure', 'Error while parsing request')
+        return return_message('failure', 'Error while parsing request/quering offset')
     
     try:
-        consumer = Consumer.query.filter_by(id=consumer_id).first()
-        if consumer_id is None:
-            return return_message('failure', 'consumer_id does not exist')
-
         if consumer.topic.name != topic_name:
             return return_message('failure', 'consumer_id and topic do not match')
         # the tuff query
-        message = Message.query.filter(Message.id > consumer.offset).filter_by(topic_id=consumer.topic.id).order_by(Message.id.asc()).first()
+        message = None
+        if consumer.partition_id == -1:
+            message = Message.query.filter(Message.id > offset).filter_by(topic_id=consumer.topic.id).order_by(Message.id.asc()).first()
+        else:
+            message = Message.query.filter(Message.id > offset).filter_by(topic_id=consumer.topic.id, partition_id=consumer.partition.id).order_by(Message.id.asc()).first()
+        
         if message is None:
             return return_message('failure', 'no more messages')
         
         consumer.offset = message.id
-        db_lock = threading.Lock()
-        with db_lock:
-            db.session.commit()
-        
-        with db_lock:
-            return {
-                "status": "success",
-                "message": message.message_content,
-                "offset": message.id
-            }
-    except:
-        return return_message('failure','Error while querying/commiting database')
-    
-@app.route('/consumer/set_offset',methods=['POST'])
-def consumer_set_offset():
-    print_thread_id()
-    content_type = request.headers.get('Content-Type')
-    if content_type != 'application/json':
-        return return_message('failure', 'Content-Type not supported')
-        
-    consumer_id = None
-    offset = None
-    try:
-        receive = request.json
-        consumer_id = receive['consumer_id']
-        offset = receive['offset']
-    except:
-        return return_message('failure', 'Error while parsing request')
-    
-    try:
-        consumer = Consumer.query.filter_by(id=consumer_id).first()
-        if consumer_id is None:
-            return return_message('failure', 'consumer_id does not exist')
-        
-        consumer.offset = offset
+        db.flush()
         db.session.commit()
-        return return_message('success')
-    except:
-        return return_message('failure','Error while querying/commiting database')    
 
-@app.route('/size',methods=['GET'])
-def consumer_size():
-    print_thread_id()   
-    topic_name = None
-    consumer_id = None
-    try:
-        topic_name = request.args.get('topic')
-        consumer_id = request.args.get('consumer_id')
-        consumer_id = int(consumer_id)
-    except:
-        return return_message('failure', 'Error while parsing request')
-    
-    try:
-        consumer = Consumer.query.filter_by(id=consumer_id).first()
-        if consumer_id is None:
-            return return_message('failure', 'consumer_id does not exist')
-
-        if consumer.topic.name != topic_name:
-            return return_message('failure', 'consumer_id and topic do not match')
-        # the tuff query
-        messages = Message.query.filter(Message.id > consumer.offset).filter_by(topic_id=consumer.topic.id).count()
         return {
             "status": "success",
-            "size": messages
+            "message": message.message_content,
+            "offset": message.id
         }
     except:
-        return return_message('failure', 'Error while querying/commiting database')
+        return return_message('failure','Error while querying/commiting database')
 
 # syncing to replicas
 @app.route('/retreive_messages', methods=['GET'])
