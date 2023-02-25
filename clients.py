@@ -47,3 +47,48 @@ class Consumer:
         except:
             self.eprint('change replica: error while parsing response')
         return
+
+    def register(self, topic: str, partition: int=-1) -> int:
+        # self checks
+        
+        # already registered
+        if (topic, partition) in self.ids:
+            return -1
+
+        # prepare request content 
+        request_content = {"topic":topic}
+        if partition != -1:
+            request_content['partition_id'] = partition
+            
+        if self.current_replica is None:
+            self.eprint('error: replica address not set')
+            self.change_replica()
+            return -1
+        
+        # request
+        res = None
+        try:
+            res = requests.post(self.current_replica + 'consumer/register', json=request_content)
+        except:
+            self.eprint('Can not make a post request/received unparsable response')
+            self.change_replica()
+            return -1
+        
+        # parse the request
+        try:
+            if not res.ok:
+                self.eprint('received unexpected response code', res.status_code)
+                self.change_replica()
+                return False
+            
+            response = res.json()
+            if response['status'] == 'failure':
+                self.eprint(response)
+                return -1
+            self.ids[(topic, partition)] = response['consumer_id']
+            return response['consumer_id']
+        except:
+            self.eprint('error while parsing response')
+            self.change_replica()
+        
+        return -1
