@@ -177,3 +177,22 @@ class Consumer:
             self.change_replica()
 
         return False
+
+
+from typing import Dict
+from typing import Tuple
+import requests
+import json
+import traceback
+import sys
+
+class Producer:
+    def __init__(self, host: str, port: int, name: str = '') -> None:
+        self.hostname: str = 'http://' + host + ':' + str(port) + '/'
+        self.ids : Dict[Tuple(str, int), int] = {}
+        self.name: str = name
+
+    def eprint(self, *args, **kwargs):
+        print(self.name, *args, file=sys.stderr, **kwargs)
+
+    
