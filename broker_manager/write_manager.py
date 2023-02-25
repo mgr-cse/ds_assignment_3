@@ -37,12 +37,6 @@ class Broker(db.Model):
     # list of partitions that broker handles
     partitions = db.relationship('Partition', backref='broker')
 
-class Consumer(db.Model):
-    id = db.Column(db.Integer, primary_key = True)
-    topic_id = db.Column(db.Integer, db.ForeignKey('topic.id'))
-    offset = db.Column(db.Integer, nullable=False)
-    timestamp = db.Column(db.Time)
-    health = db.Column(db.Integer)
 
 class Partition(db.Model):
     id = db.Column(db.Integer, primary_key = True)
@@ -55,19 +49,8 @@ class Topic(db.Model):
     name = db.Column(db.String(255), nullable=False, unique=True)
     
     producers  = db.relationship('Producer', backref='topic')
-    consumers  = db.relationship('Consumer', backref='topic')
-    messages   = db.relationship('Message', backref='topic')
     partitions = db.relationship('Partition', backref='topic')
 
-class Message(db.Model):
-    id = db.Column(db.Integer, primary_key = True)
-    topic_id = db.Column(db.Integer, db.ForeignKey('topic.id'))
-    partition_id = db.Column(db.Integer, db.ForeignKey('partition.id'))
-    message_content = db.Column(db.String(255))
-    # producer sends some info to uniquely identify the message
-    producer_client = db.Column(db.String(255))
-    timestamp = db.Column(db.Float)
-    random_string = db.Column(db.String(257))
 
 # debugging functions
 def print_thread_id():
