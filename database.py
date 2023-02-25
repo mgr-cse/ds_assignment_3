@@ -14,3 +14,11 @@ class Producer(db.Model):
 
     def as_dict(self):
        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
+class Consumer(db.Model):
+    id = db.Column(db.Integer, primary_key = True)
+    topic_id = db.Column(db.Integer, db.ForeignKey('topic.id'))
+    partition_id = db.Column(db.Integer)
+    
+    health = db.Column(db.Integer)
+    timestamp = db.Column(db.Float)
