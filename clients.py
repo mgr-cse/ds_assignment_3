@@ -228,3 +228,41 @@ class Producer:
         except:
             self.eprint('Invalid Response:', res.text) 
         return -1
+
+    def enqueue(self, topic: str, message: str, timestamp: float, random_string: str, partition: int=-1) -> bool:
+        # self check
+        if (topic, partition) not in self.ids:
+            self.eprint('not registered for the topic/partition!')
+            return False
+        
+        # prepare request
+        prod_id = self.ids[(topic, partition)]
+        request_content = {
+            "topic": topic,
+            "producer_id": prod_id,
+            "message": message,
+            "prod_client": self.name,
+            "timestamp": timestamp,
+            "random_string": random_string
+        }
+        
+        # make request
+        try:
+            res = requests.post(self.hostname + 'producer/produce', json=request_content)
+        except:
+            self.eprint('Can not make a post request')
+            return False
+        
+        # parse request
+        try:    
+            if not res.ok:
+                self.eprint('received unexpected response code', res.status_code)
+                return False
+                    
+            response = res.json()
+            if response['status'] == 'success':
+                return True  
+            self.eprint(response)
+        except:
+            self.eprint('Invalid response:', res.text)
+        return False
