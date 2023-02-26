@@ -2,13 +2,15 @@ import time
 import requests
 import traceback
 import random
+import threading
 
 from flask import Flask, Request, redirect
-from __main__ import app, request, sync_address, primary, try_timeout, max_tries
+from __main__ import app, request, sync_address, primary, max_tries, db_lock
 app: Flask
 request: Request
 sync_address: str
 primary: bool
+db_lock: threading.Lock()
 
 from broker_manager.common.debug import *
 from broker_manager.common.db_model import *
@@ -190,7 +192,7 @@ def topic_register_request():
 
 # partition registration
 @app.route('/partitions', methods=['POST'])
-def topic_register_request():
+def partition_register_request():
     print_thread_id()
     if not primary:
         return return_message('failure', 'endpoint not supported')
@@ -279,7 +281,6 @@ def producer_register_request():
     except:
         return return_message('failure','Error while querying/commiting database')
 
-
 # producer/produce
 @app.route('/producer/produce',methods=['POST'])
 def producer_enqueue():
@@ -311,6 +312,10 @@ def producer_enqueue():
         if producer is None:
             return return_message('failure', 'producer_id does not exist')
         
+        producer.timestamp = time.time()
+        db.session.flush()
+        db.session.commit()
+        
         if producer.topic.name != topic_name:
             return return_message('failure', 'producer_id and topic do not match')
         
@@ -324,7 +329,7 @@ def producer_enqueue():
         
         if producer.partition_id == -1:
             # produce to any random implicit partition, with good health
-            brokers = Broker.query.filter_by(health=1)
+            brokers = Broker.query.filter_by(health=1).all()
             for _ in range(max_tries):
                 if len(brokers) < 1: continue
                 random_choice = random.randint(0, len(brokers)-1)
@@ -363,12 +368,11 @@ def producer_enqueue():
         traceback.print_exc()
         return return_message('failure','Error while querying/commiting database')
 
-
 # consumer endpoints (strictly/partially serviced by read)
 # consumer registration
 # producer registration
 @app.route('/consumer/register',methods=['POST'])
-def producer_register_request():
+def consumer_register_request():
     print_thread_id()
     # updates metadata, redirect to primary
     if not primary:
@@ -410,9 +414,104 @@ def producer_register_request():
         db.session.commit()
         return {
             "status": "success",
-            "producer_id": consumer.id
+            "consumer_id": consumer.id
         }
     except:
         return return_message('failure','Error while querying/commiting database')
 
+@app.route('/consumer/health_poll', methods=['POST'])
+def consumer_health_poll():
+    print_thread_id()
+    if not primary:
+        return redirect(f'http://{sync_address}/consumer/health_poll', code=307)
+    
+    content_type = request.headers.get('Content-Type')
+    if content_type != 'application/json':
+        return return_message('failure', 'Content-Type not supported')
+
+    # parsing
+    consumer_id = None
+    try:
+        receive = request.json
+        consumer_id = receive['consumer_id']
+    except:
+        return return_message('failure', 'Error while parsing request')
+    
+    try:
+        consumer = Consumer.query.filter_by(id=consumer_id).first()
+        if consumer is None:
+            return return_message('failure', 'consumer_does not exist')
+        consumer.health = 1
+        consumer.timestamp = time.time()
+        db.session.flush()
+        db.session.commit()
+    except:
+        traceback.print_exc()
+        return_message('failure', 'error while updating health status!')
+
+
 # consumer/consume
+@app.route('/consumer/consume', methods=['GET'])
+def consumer_dequeue():
+    print_thread_id()
+    if primary:
+        return return_message('failure', 'primary does not serve consumers')
+    consumer_id = None
+    try:
+        consumer_id = request.args.get('consumer_id')
+        consumer_id = int(consumer_id)
+    except:
+        return return_message('failure', 'Error while parsing request')
+    
+    # query relevant parameters
+    consumer = None
+    brokers = None
+    topic_id = None
+    partition_id = None
+    try:
+        consumer = Consumer.query.filter_by(id=consumer_id).first()
+        if consumer is None:
+            return return_message('failure', 'consumer does not exist')
+        topic_id = consumer.topic.id
+        partition_id = consumer.partition_id
+
+        try:
+            res = requests.post(f'http://{sync_address}:5000/consumer/health_poll', json={"id":consumer.id})
+            if not res.ok:
+                print(f'health status, wrong code: {res.status_code}')
+        except:
+            traceback.print_exc()
+
+        # find broker information
+        if consumer.partition_id == -1:
+            brokers = Broker.query.filter_by(health=1).all()
+        else:
+            partition = Partition.query.filter_by(id=consumer.partition_id).first()
+            broker = partition.broker
+            if broker.health != 1:
+                return return_message('failure', 'broker not healthy for requested partition')
+            brokers = [broker]
+
+    except:
+        traceback.print_exc()
+        return return_message('failure','Error while querying/commiting database')
+    
+    # request the brokers
+    for _ in range(max_tries):
+        broker = random.choice(brokers)
+        try:
+            content = {
+                "consumer_id": consumer_id,
+                "topic_id": topic_id,
+                "partition_id": partition_id
+            }
+            res = requests.get(f'http://{broker.ip}:{broker.port}/consume', params=content)
+            if res.ok:
+                result = res.json()
+                return result
+            else: print(f'invalid response code: {res.status_code}')
+        except:
+            traceback.print_exc()
+    return return_message('failure', 'max tries reached')
+
+# metadata sync

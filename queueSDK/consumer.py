@@ -31,20 +31,23 @@ class Consumer:
                 if response['status'] == 'failure':
                     self.eprint(response)
                     return -1
+            else: self.eprint(f'invalid response code: {res.status_code}')
         except:
             self.eprint('Can not make a post request/received unparsable response')
             return -1
         try:
-           pass
+           self.ids[(topic, partition)] = response['consumer_id']
+           return response['consumer_id']
         except:
             self.eprint('error while parsing response')
+            return -1
 
-    def dequeue(self, topic: str) -> bool|str:
-        if topic not in self.ids:
+    def dequeue(self, topic: str, partition: int=-1) -> bool|str:
+        if (topic,partition) not in self.ids:
             self.eprint('not registered for topic', topic)
             return False
         
-        cons_id = self.ids[topic]
+        cons_id = self.ids[(topic,partition)]
         try:
             res = requests.get(self.hostname + 'consumer/consume', params={"consumer_id": cons_id, "topic": topic})
             if res.ok:
@@ -55,8 +58,7 @@ class Consumer:
                     else: self.eprint(response['message'])
                 except:
                     self.eprint('Invalid response:', res.text)
-            else:
-                self.eprint('received unexpected response code', res.status_code)
+            else: self.eprint('received unexpected response code', res.status_code)
         except:
             self.eprint('Can not make post request')
         return False

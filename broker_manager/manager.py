@@ -16,25 +16,28 @@ heartbeat_time = 5
 sync_address = '172.17.0.2:5000'
 primary = True
 
+max_tries = 3
+try_timeout = 2
+
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = f"postgresql://{username}:{password}@localhost:{db_port}/{database}"
 
 # queue database structures
 db = SQLAlchemy(app)
+db_lock = threading.Lock()
 
 sys.path.append(os.getcwd())
 from broker_manager.common.db_model import *
-from broker_manager.common.routes import *
-from broker_manager.read.sync import *
+from broker_manager.common.routes_manager import *
 
 if __name__ == "__main__": 
     with app.app_context():
         db.create_all()
         # launch heartbeats
-        thread = threading.Thread(target=heartbeat_sync_broker, args=(heartbeat_time,))
-        thread.start()
+        #thread = threading.Thread(target=heartbeat_sync_broker, args=(heartbeat_time,))
+        #thread.start()
 
     # launch request handler
     app.run(host='0.0.0.0',debug=False, threaded=True, processes=1)
     app_kill_event = True
-    thread.join()
+    #thread.join()

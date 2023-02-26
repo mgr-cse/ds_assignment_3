@@ -39,7 +39,7 @@ class Message(db.Model):
     def as_dict(self):
        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
 
-class Offset(db.Model):
+class Offsetscons(db.Model):
     consumer_id = db.Column(db.Integer, primary_key = True)
     offset = db.Column(db.Integer)
 
@@ -152,9 +152,9 @@ def consume():
         return return_message('failure', 'error in parsing request parameters')
     
     try:
-        offset = Offset.query.filter_by(consumer_id=consumer_id).first()
+        offset = Offsetscons.query.filter_by(consumer_id=consumer_id).first()
         if offset is None:
-            offset = Offset(consumer_id=consumer_id, offset=0)
+            offset = Offsetscons(consumer_id=consumer_id, offset=0)
             db.session.add(offset)
             db.session.flush()
         
@@ -165,10 +165,10 @@ def consume():
         if message is not None:
             offset.offset = message.id
         
-        db.flush()
+        db.session.flush()
         db.session.commit()
         
-        if message is None:
+        if message is not None:
             return return_message('success', message.message_content)
         return return_message('failure', 'no more messages')
         

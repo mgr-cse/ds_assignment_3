@@ -74,6 +74,7 @@ class Topic(db.Model):
     
     producers  = db.relationship('Producer', backref='topic')
     partitions = db.relationship('Partition', backref='topic')
+    consumers = db.relationship('Consumer', backref='topic')
 
     def as_dict(self):
        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
