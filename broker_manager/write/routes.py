@@ -50,7 +50,7 @@ def topic_register_request():
     except:
         return return_message('failure', 'Error while querying/comitting to database')
 
-@app.route('/broker/heartbeat',methods=['POST'])
+@app.route('/brokers/heartbeat',methods=['POST'])
 def broker_heartbeat():
     print_thread_id()
     content_type = request.headers.get('Content-Type')

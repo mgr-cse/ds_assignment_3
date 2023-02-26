@@ -23,6 +23,8 @@ app.config["SQLALCHEMY_DATABASE_URI"] = f"postgresql://{username}:{password}@loc
 # queue database structures
 db = SQLAlchemy(app)
 
+db_lock = threading.Lock()
+
 class Message(db.Model):
     id = db.Column(db.Integer, primary_key = True)
     topic_id = db.Column(db.Integer, nullable=False)
@@ -36,6 +38,10 @@ class Message(db.Model):
 
     def as_dict(self):
        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
+class Offset(db.Model):
+    consumer_id = db.Column(db.Integer, primary_key = True)
+    offset = db.Column(db.Integer)
 
 # debugging functions
 def print_thread_id():
@@ -93,12 +99,14 @@ def topic_register_request():
             )
         
         print('reached')
-        # write ahead
-        db.session.add(message)
-        db.session.flush()
+        # lock database because message id must be strictly orderd among requests
+        with db_lock:
+            db.session.add(message)
+            # write ahead
+            db.session.flush()
+            # commit transaction
+            db.session.commit()
         
-        # commit transaction
-        db.session.commit()
         return return_message('success')
     except:
         print('database error')
@@ -125,6 +133,48 @@ def topic_get_request():
         }
     except:
         return return_message('failure','Error while querying database')
+    
+@app.route('/consume', methods=['GET'])
+def consume():
+    consumer_id = None
+    topic_id = None
+    partition_id = None
+
+    try:
+        consumer_id = request.args.get('consumer_id')
+        consumer_id = int(consumer_id)
+        topic_id = request.args.get('topic_id')
+        topic_id = int(topic_id)
+        partition_id = request.args.get('partition_id')
+        partition_id =int(partition_id)
+    except:
+        print('can not parse request')
+        return return_message('failure', 'error in parsing request parameters')
+    
+    try:
+        offset = Offset.query.filter_by(consumer_id=consumer_id).first()
+        if offset is None:
+            offset = Offset(consumer_id=consumer_id, offset=0)
+            db.session.add(offset)
+            db.session.flush()
+        
+        if partition_id == -1:
+            message = Message.query.filter(Message.id>offset.offset, Message.topic_id==topic_id).first()
+        else:
+            message = Message.query.filter(Message.id>offset.offset, Message.topic_id==topic_id, Message.partition_id==partition_id).first()
+        if message is not None:
+            offset.offset = message.id
+        
+        db.flush()
+        db.session.commit()
+        
+        if message is None:
+            return return_message('success', message.message_content)
+        return return_message('failure', 'no more messages')
+        
+    except:
+        traceback.print_exc()
+        return return_message('failure', 'can not query or commit to database')
 
 # heartbeat function
 def heartbeat(beat_time):
@@ -140,7 +190,7 @@ def heartbeat(beat_time):
 
         # send ip to broker_manager
         try:
-            res = requests.post('http://' + broker_manager_address + '/broker/heartbeat', json={"ip": ip, "port": 5000})
+            res = requests.post('http://' + broker_manager_address + '/brokers/heartbeat', json={"ip": ip, "port": 5000})
         except:
             print('can not make connection')
         time.sleep(beat_time)
