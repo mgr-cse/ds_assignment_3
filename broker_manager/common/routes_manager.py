@@ -10,7 +10,7 @@ app: Flask
 request: Request
 sync_address: str
 primary: bool
-db_lock: threading.Lock()
+db_lock: threading.Lock
 
 from broker_manager.common.debug import *
 from broker_manager.common.db_model import *
@@ -476,7 +476,7 @@ def consumer_dequeue():
         partition_id = consumer.partition_id
 
         try:
-            res = requests.post(f'http://{sync_address}:5000/consumer/health_poll', json={"id":consumer.id})
+            res = requests.post(f'http://{sync_address}/consumer/health_poll', json={"id":consumer.id})
             if not res.ok:
                 print(f'health status, wrong code: {res.status_code}')
         except:
@@ -515,3 +515,36 @@ def consumer_dequeue():
     return return_message('failure', 'max tries reached')
 
 # metadata sync
+@app.route('/metadata/sync', methods=['GET'])
+def get_metadata():
+    print_thread_id()
+    if not primary:
+        return return_message('failure', 'I am not the leader')
+    
+    try:
+        with db_lock:
+            topics = Topic.query.order_by(Topic.id).all()
+            producers = Producer.query.order_by(Producer.id).all()
+            consumers = Consumer.query.order_by(Consumer.id).all()
+            brokers = Broker.query.order_by(Broker.id).all()
+            partitions = Partition.query.order_by(Partition.id).all()
+        
+        topics     = [ e.as_dict() for e in topics ]
+        producers  = [ e.as_dict() for e in producers ]
+        consumers  = [ e.as_dict() for e in consumers ]
+        brokers    = [ e.as_dict() for e in brokers ]
+        partitions = [ e.as_dict() for e in partitions ]
+
+        return {
+            "status": "success",
+            "topics": topics,
+            "producers": producers,
+            "consumers": consumers,
+            "brokers": brokers,
+            "partitions": partitions
+        }
+    except:
+        traceback.print_exc()
+        return return_message('failure', 'error while querying database')
+    
+   

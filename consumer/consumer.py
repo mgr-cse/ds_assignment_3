@@ -5,7 +5,7 @@ import time
 
 from queueSDK.consumer import Consumer
 
-address = '172.17.0.2'
+address = '172.17.0.5'
 port = 5000
 
 consumer = Consumer(address, port, 'C-1')

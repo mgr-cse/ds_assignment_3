@@ -6,6 +6,7 @@ FILE=$3
 shift
 shift
 shift
+echo $@
 
 # boot up container
 docker run -itd --name $NAME --ip $IP --privileged -v $PWD/:$PWD/:rw localhost/ds_queue_host /sbin/init
