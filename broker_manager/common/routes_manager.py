@@ -521,6 +521,29 @@ def get_metadata():
     if not primary:
         return return_message('failure', 'I am not the leader')
     
+    #parse parameters
+    try:
+        ip = request.args.get('ip')
+        port = request.args.get('port')
+        if ip is None:
+            raise Exception("no ip received from replica")
+        
+        # query database
+        replica = Replica.query.filter_by(ip=ip, port=port).first()
+        if replica is None:
+            replica = Replica(ip=ip, port=port, health=1, timestamp=time.time())
+            db.session.add(replica)
+        else:
+            replica.timestamp = time.time()
+            replica.health = 1
+        db.session.flush()
+
+        db.session.commit() 
+    except:
+        traceback.print_exc()
+        print('can not update health status for repica')
+    
+    # sending required stuff
     try:
         with db_lock:
             topics = Topic.query.order_by(Topic.id).all()
@@ -547,4 +570,20 @@ def get_metadata():
         traceback.print_exc()
         return return_message('failure', 'error while querying database')
     
-   
+# discover replicas
+@app.route('/replicas', methods=['GET'])
+def get_replicas():
+    print_thread_id()
+    if not primary:
+        return return_message('failure', 'I am not the leader')
+    
+    try:
+        replicas = Replica.query.filter_by(health=1).all()
+        replicas = [ {"ip": r.ip, "port": r.port} for r in replicas ]
+        return {
+            "status": "success",
+            "replicas": replicas
+        }
+    except:
+        traceback.print_exc()
+        return return_message('failure', 'can not query database')

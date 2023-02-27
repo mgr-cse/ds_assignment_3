@@ -6,25 +6,27 @@ from flask_sqlalchemy import SQLAlchemy
 import os
 import sys
 
+# database params
 username = 'mattie'
 password = 'password'
 database = 'psqlqueue'
 db_port = '5432'
 
-app_kill_event = False
+# application params
+max_tries = 3
+try_timeout = 2
 heartbeat_time = 5
 health_timeout = 5
 
+# primary address
 sync_address = '172.17.0.2:5000'
-primary = False
 
+primary = False
 if sys.argv[1] == 'write':
     print('+++++ started as primary')
     primary = True
 
-max_tries = 3
-try_timeout = 2
-
+app_kill_event = False
 app = Flask(__name__)
 app.config["SQLALCHEMY_DATABASE_URI"] = f"postgresql://{username}:{password}@localhost:{db_port}/{database}"
 

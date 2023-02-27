@@ -82,3 +82,18 @@ class Topic(db.Model):
     def from_dict(self, obj: Dict):
         for k in obj:
             setattr(self, k, obj[k])
+
+class Replica(db.Model):
+    id = db.Column(db.Integer, primary_key = True)
+    ip = db.Column(db.String(255))
+    port = db.Column(db.Integer)
+
+    health = db.Column(db.Integer)
+    timestamp = db.Column(db.Float)
+
+    def as_dict(self):
+       return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+    
+    def from_dict(self, obj: Dict):
+        for k in obj:
+            setattr(self, k, obj[k])

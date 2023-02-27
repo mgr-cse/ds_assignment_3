@@ -1,6 +1,7 @@
 import requests
 import time
 import traceback
+import socket
 
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
@@ -11,6 +12,17 @@ app_kill_event: bool
 sync_address: str
 
 from broker_manager.common.db_model import *
+
+# get self ip
+def self_ip_address():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except:
+        return None
 
 # 
 def commit_metadata(response):
@@ -69,8 +81,14 @@ def commit_metadata(response):
 
 def sync_metadata():
     try:
-        res = requests.get(f'http://{sync_address}/metadata/sync')
-        print(res.ok)
+        my_ip = self_ip_address()
+        content = None
+        if my_ip is not None:
+            content = {
+                "ip": my_ip,
+                "port": 5000
+            }
+        res = requests.get(f'http://{sync_address}/metadata/sync', params=content)
         if res.ok:
             response = res.json()
             if response['status'] == 'success':
@@ -105,12 +123,22 @@ def update_health_data(health_timeout: float):
         for c in consumers:
             c.health = 0
         db.session.flush()
+        db.session.commit()
 
         # update producer health
         last_point = time.time() - health_timeout
         producers = Producer.query.filter(Producer.timestamp < last_point, Producer.health==1).all()
         for p in producers:
             p.health = 0
+        db.session.flush()
+        db.session.commit()
+
+        # update replica health
+        # update producer health
+        last_point = time.time() - health_timeout
+        replicas = Replica.query.filter(Replica.timestamp < last_point, Replica.health==1).all()
+        for r in replicas:
+            r.health = 0
         db.session.flush()
         db.session.commit()
     except:
