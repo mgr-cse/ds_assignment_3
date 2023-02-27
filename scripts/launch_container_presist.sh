@@ -1,14 +1,12 @@
 #!/bin/bash
 
 NAME=$1
-IP=$2
-FILE=$3
-shift
+FILE=$2
 shift
 shift
 
 # boot up container
-docker run -itd --name $NAME --ip $IP --privileged -v $PWD/:$PWD/:rw localhost/ds_queue_host /sbin/init
+docker run -itd --name $NAME --privileged -v $PWD/:$PWD/:rw localhost/ds_queue_host /sbin/init
 sleep 5
 
 # run application
