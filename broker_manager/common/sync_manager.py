@@ -149,6 +149,8 @@ def health_heartbeat(beat_time):
     while True:
         if app_kill_event:
             break
+        # problematic, program waits here, after app teardown
+        #unsafe zone if wait here
         with app.app_context():
             update_health_data(health_timeout)
         time.sleep(beat_time)
