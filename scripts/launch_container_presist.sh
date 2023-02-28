@@ -10,7 +10,7 @@ docker run -itd --name $NAME --privileged -v $PWD/:$PWD/:rw localhost/ds_queue_h
 sleep 5
 
 # run application
-docker exec -it $NAME /bin/bash -c "sudo -iu mattie /bin/bash -c 'cd $PWD; source 01-env/bin/activate; python $FILE $@'"
+docker exec -itd $NAME /bin/bash -c "sudo -iu mattie /bin/bash -c 'cd $PWD; source 01-env/bin/activate; python $FILE $@'"
 
 #echo stopping container
 # clear container on quit
