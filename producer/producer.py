@@ -6,25 +6,47 @@ from queueSDK.producer import Producer
 import random
 import string
 import time
-import requests
+import threading
+from typing import List
 
 broker_maganger_ip = '172.17.0.2'
 broker_manager_port = 5000
+max_messages = 30
 
-# create topic request
-res = requests.post('http://' + broker_maganger_ip + ':' + str(broker_manager_port) + '/topics', json={'topic_name': 'T-1'})
+name = sys.argv[1].strip()
+topics = sys.argv[2].strip().split(',')
+partitions = sys.argv[3].strip().split(',')
+print(partitions)
+try:
+    partitions = [int(p) for p in partitions]
+except:
+    print('can not parse partitions')
+    exit(-1)
+
+if len(topics) != len(partitions):
+    print('partitions and topics not equal')
+    exit(-1)
+
+prod = Producer(broker_maganger_ip, broker_manager_port, name)
+for t, p in zip(topics, partitions):
+    while prod.register(t, p) == -1: pass
 
 
-prod = Producer(broker_maganger_ip, broker_manager_port, 'P-1')
-
-prod.register('T-1')
-
-for i in range(30):
-    # prepare message
-    random_string = ''.join(random.choices(string.ascii_letters + string.digits, k=256))
-    timestamp = time.time()
-
-    while not prod.enqueue('T-1', f'debug {i}', timestamp, random_string):
+def enqueue_logs(topic: str, partition: int, max_message):
+    for i in range(max_message):
+        random_string = ''.join(random.choices(string.ascii_letters + string.digits, k=256))
+        message = f'debug message {i}: topic {topic}, partition {partition}'
+        
+        while not prod.enqueue(topic, message, time.time(), random_string, partition):
+            time.sleep(1)
+        print('message enqueued!', message)
         time.sleep(1)
-    print('message enqueued!')
-    time.sleep(1)
+
+threads: List[threading.Thread] = []
+for t, p in zip(topics, partitions):
+    thread = threading.Thread(target=enqueue_logs, args=(t,p,max_messages,))
+    threads.append(thread)
+    thread.start()
+
+for t in threads:
+    t.join()
