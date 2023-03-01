@@ -32,7 +32,9 @@ sudo apt install python3-venv python3-pip docker.io
 ```
 ### Add yourself to docker group
 ```bash
-sudo usermod
+sudo usermod -a $USER -G docker
+# you may need to restart your system
+# for this to take effect
 ```
 ### Setting up repository
 ```bash
