@@ -16,7 +16,7 @@ max_messages = 30
 name = sys.argv[1].strip()
 topics = sys.argv[2].strip().split(',')
 partitions = sys.argv[3].strip().split(',')
-print(partitions)
+
 try:
     partitions = [int(p) for p in partitions]
 except:
@@ -35,11 +35,12 @@ for t, p in zip(topics, partitions):
 def enqueue_logs(topic: str, partition: int, max_message):
     for i in range(max_message):
         random_string = ''.join(random.choices(string.ascii_letters + string.digits, k=256))
-        message = f'debug message {i}: topic {topic}, partition {partition}'
+        message = f'{name} debug message {i}: topic {topic}, partition {partition}'
         
         while not prod.enqueue(topic, message, time.time(), random_string, partition):
             time.sleep(1)
-        print('message enqueued!', message)
+        print_str = f'message enqueued! {message}\n'
+        print(print_str, end='', flush=True)
         time.sleep(1)
 
 threads: List[threading.Thread] = []

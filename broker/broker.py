@@ -159,18 +159,18 @@ def consume():
             db.session.flush()
         
         if partition_id == -1:
-            message = Message.query.filter(Message.id>offset.offset, Message.topic_id==topic_id).first()
+            message = Message.query.filter(Message.id>offset.offset, Message.topic_id==topic_id).order_by(Message.id).first()
         else:
-            message = Message.query.filter(Message.id>offset.offset, Message.topic_id==topic_id, Message.partition_id==partition_id).first()
-        if message is not None:
-            offset.offset = message.id
+            message = Message.query.filter(Message.id>offset.offset, Message.topic_id==topic_id, Message.partition_id==partition_id).order_by(Message.id).first()
+        if message is None:
+            return return_message('failure', 'no more messages')
+        offset.offset = message.id
         
         db.session.flush()
         db.session.commit()
         
         if message is not None:
             return return_message('success', message.message_content)
-        return return_message('failure', 'no more messages')
         
     except:
         traceback.print_exc()

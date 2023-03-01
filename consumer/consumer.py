@@ -4,6 +4,7 @@ sys.path.append(os.getcwd())
 import time
 from typing import List
 import threading
+import signal
 
 from queueSDK.consumer import Consumer
 
@@ -24,6 +25,8 @@ if len(topics) != len(partitions):
     print('partitions and topics not equal')
     exit(-1)
 
+kill_signal = False
+
 cons = Consumer(broker_maganger_ip, broker_manager_port, name)
 for t, p in zip(topics, partitions):
     while cons.register(t, p) == -1: pass
@@ -31,10 +34,13 @@ for t, p in zip(topics, partitions):
 
 def dequeue_logs(topic: str, partition: int, max_message):
     while True:
+        if kill_signal:
+            break
         message = cons.dequeue(topic, partition)
         if type(message) == str:
-            print(threading.get_native_id(),':', message)
-        time.sleep(1)
+            print_str = f'{name} {threading.get_native_id()}: {message}\n'
+            print(print_str, end='',flush=True)
+        time.sleep(0.2)
 
 threads: List[threading.Thread] = []
 for t, p in zip(topics, partitions):
@@ -42,5 +48,12 @@ for t, p in zip(topics, partitions):
     threads.append(thread)
     thread.start()
 
-for t in threads:
-    t.join()
+def handler(signum, frame):
+    print(f'{name} ctrl-C pressed, exiting...')
+    global kill_signal
+    global threads
+    kill_signal = True
+
+    for t in threads:
+        t.join()
+signal.signal(signal.SIGINT, handler)
