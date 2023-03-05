@@ -1,6 +1,7 @@
 # ds_assignment_2
 
 Distributed Queue assignment
+Report is in `report.pdf`, please download it from https://raw.githubusercontent.com/mgr-cse/ds_assignment_2/main/report.pdf
 
 ## Code structure
 ```bash
