@@ -7,7 +7,7 @@ shift
 echo $@
 
 # boot up container
-docker run -itd --name $NAME --privileged -v $PWD/:$PWD/:rw localhost/ds_queue_host /sbin/init
+docker run -itd --name $NAME --privileged -v $PWD/:$PWD/:rw localhost/ds_queue_3 /sbin/init
 sleep 5
 
 # run application

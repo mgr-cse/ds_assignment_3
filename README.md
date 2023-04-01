@@ -3,6 +3,9 @@
 Distributed Queue assignment
 Report is in `report.pdf`, please download it from https://raw.githubusercontent.com/mgr-cse/ds_assignment_2/main/report.pdf
 
+Raft implementation choosen:
+[bakwc/PySyncObj](https://github.com/bakwc/PySyncObj) from [raft.github.io](https://raft.github.io/)
+
 ## Code structure
 ```bash
 ./
