@@ -55,6 +55,6 @@ pip install -r requirements.txt
 ## Running test
 
 ```bash
-./tests/test/sh
+./tests/test/test.sh
 ```
     
