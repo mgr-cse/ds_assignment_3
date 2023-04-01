@@ -9,6 +9,7 @@ import socket
 import requests
 
 broker_manager_address = '172.17.0.2:5000'
+raft_port = '4001'
 heartbeat_time = 2
 app_kill_event = False
 
@@ -24,6 +25,10 @@ app.config["SQLALCHEMY_DATABASE_URI"] = f"postgresql://{username}:{password}@loc
 db = SQLAlchemy(app)
 
 db_lock = threading.Lock()
+
+# raft
+from pysyncobj import SyncObj, SyncObjConf
+from pysyncobj.batteries import ReplLockManager, ReplList, ReplDict
 
 class Message(db.Model):
     id = db.Column(db.Integer, primary_key = True)
@@ -107,6 +112,7 @@ def topic_register_request():
             # commit transaction
             db.session.commit()
         
+        message_object.append(receive, sync=True)
         return return_message('success')
     except:
         print('database error')
@@ -195,6 +201,35 @@ def heartbeat(beat_time):
             print('can not make connection')
         time.sleep(beat_time)
 
+        # debug prints
+        print(message_object.rawData())
+
+        # add other brokers to cluster automatically
+        print('Current connected nodes:', syncObj.otherNodes)
+        broker_set = set()
+        for b in syncObj.otherNodes:
+            broker_set.add(b.host)
+
+        broker_set_new = set()
+        try:
+            res = requests.get(f'http://{broker_manager_address}/brokers')
+            if not res.ok:
+                raise Exception(f'response received: {res.status_code}')
+            response = res.json()
+            if response['status'] != 'success':
+                raise Exception(f'status: failure')
+            
+            for b in response['brokers']:
+                broker_set_new.add(b['ip'])
+            difference = broker_set_new - broker_set
+
+            for b in difference:
+                syncObj.addNodeToCluster(f'{b}:{raft_port}')
+        except:
+            print('can not find other brokers')
+
+
+
 if __name__ == "__main__":
     thread = None
     with app.app_context():
@@ -202,6 +237,20 @@ if __name__ == "__main__":
         # launch heartbeats
         thread = threading.Thread(target=heartbeat, args=(heartbeat_time,))
         thread.start()
+
+        # set up raft
+        message_object = ReplList()
+        offset_object = ReplDict()
+        obj_lock = ReplLockManager(autoUnlockTime=10)
+
+        # get self ip
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+
+        cfg = SyncObjConf(dynamicMembershipChange = True)
+        syncObj = SyncObj(f'{ip}:{raft_port}', [], cfg, [message_object, offset_object, obj_lock])
 
     # launch request handler
     app.run(host='0.0.0.0',debug=False, threaded=True, processes=1)
