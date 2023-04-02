@@ -8,6 +8,7 @@ mkdir -p $LOG_DIR/producer
 mkdir -p $LOG_DIR/consumer
 
 ./tests/network_up.sh
+sleep 6
 
 # start producers
 python ./producer/producer.py P-1 T-1,T-2,T-3 -1,2,3 2> $LOG_DIR/producer/P-1.err | tee $LOG_DIR/producer/P-1.log &

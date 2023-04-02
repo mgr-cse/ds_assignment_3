@@ -11,6 +11,7 @@ import requests
 broker_manager_address = '172.17.0.2:5000'
 raft_port = '4001'
 heartbeat_time = 2
+consensus_time = 2
 app_kill_event = False
 
 username = 'mattie'
@@ -29,6 +30,7 @@ db_lock = threading.Lock()
 # raft
 from pysyncobj import SyncObj, SyncObjConf
 from pysyncobj.batteries import ReplLockManager, ReplList, ReplDict
+from pysyncobj import FAIL_REASON
 
 class Message(db.Model):
     id = db.Column(db.Integer, primary_key = True)
@@ -50,7 +52,8 @@ class Offsetscons(db.Model):
 
 # debugging functions
 def print_thread_id():
-    print('Request handled by worker thread:', threading.get_native_id())
+    #print('Request handled by worker thread:', threading.get_native_id())
+    pass
 
 def return_message(status:str, message=None):
     content = dict()
@@ -88,6 +91,9 @@ def topic_register_request():
     
     # database
     try:
+        if len(syncObj.otherNodes) < 2:
+            return return_message('failure', 'not enough nodes for a consensus')
+        
         # check if the message was already written
         message = Message.query.filter_by(producer_client=producer_client, timestamp=timestamp, random_string=random_string).first()
         if message is not None:
@@ -158,6 +164,8 @@ def consume():
         return return_message('failure', 'error in parsing request parameters')
     
     try:
+        # database part
+        '''
         offset = Offsetscons.query.filter_by(consumer_id=consumer_id).first()
         if offset is None:
             offset = Offsetscons(consumer_id=consumer_id, offset=0)
@@ -174,9 +182,32 @@ def consume():
         
         db.session.flush()
         db.session.commit()
-        
+
         if message is not None:
             return return_message('success', message.message_content)
+        '''
+        if len(syncObj.otherNodes) < 2:
+            return return_message('failure', 'not enough nodes for a consensus')
+
+        # raft
+        # add consumer
+        if offset_object.get(consumer_id) is None:
+            offset_object.set(consumer_id, -1, sync=True)
+        print(offset_object.rawData(), flush=True)
+
+        # select message id
+        for i, m in enumerate(message_object):
+            if partition_id == -1:
+                if m['topic_id'] == topic_id and i > offset_object[consumer_id]:
+                    offset_object.set(consumer_id, i, sync=True)
+                    return return_message('success', m['message_content'])
+            else:
+                print(f'{consumer_id=} {partition_id=}')
+                if m['topic_id'] == topic_id and m['partition_id'] == partition_id and i > offset_object[consumer_id]:
+                    offset_object.set(consumer_id, i, sync=True)
+                    return return_message('success', m['message_content'])
+        # no id found
+        return return_message('failure', 'no more messages')
         
     except:
         traceback.print_exc()
@@ -202,15 +233,31 @@ def heartbeat(beat_time):
         time.sleep(beat_time)
 
         # debug prints
-        print(message_object.rawData())
+        #print('message count:', len(message_object.rawData()))
 
+adding_node = 0
+def addnode_callback(_, reason: FAIL_REASON):
+    if reason == FAIL_REASON.SUCCESS:
+        print('node added successfully')
+    else:
+        print('add node failed')
+    global adding_node
+    adding_node = 0
+
+def broker_add(timeout):
+    while True:
+        print('fuck')       
         # add other brokers to cluster automatically
+        if app_kill_event:
+            return
+        
         print('Current connected nodes:', syncObj.otherNodes)
         broker_set = set()
         for b in syncObj.otherNodes:
             broker_set.add(b.host)
 
         broker_set_new = set()
+        
         try:
             res = requests.get(f'http://{broker_manager_address}/brokers')
             if not res.ok:
@@ -221,13 +268,43 @@ def heartbeat(beat_time):
             
             for b in response['brokers']:
                 broker_set_new.add(b['ip'])
+            broker_set_new.discard(my_ip)
             difference = broker_set_new - broker_set
+            # debug
+            print(f'{broker_set=}')
+            print(f'{broker_set_new=}')
+            print(f'{difference=}')
 
             for b in difference:
-                syncObj.addNodeToCluster(f'{b}:{raft_port}')
+                if adding_node == 0:
+                    adding_node = 1
+                    syncObj.addNodeToCluster(f'{b}:{raft_port}', addnode_callback)
+                    print('yay')
         except:
             print('can not find other brokers')
+        time.sleep(2)
 
+def get_broker_list():
+    try:
+        res = requests.get(f'http://{broker_manager_address}/brokers')
+        if not res.ok:
+            raise Exception(f'response received: {res.status_code}')
+        response = res.json()
+        if response['status'] != 'success':
+            raise Exception(f'status: failure')
+        
+        broker_set_new = set()
+        for b in response['brokers']:
+            broker_set_new.add(b['ip'])
+        broker_set_new.discard(my_ip)
+        
+        addresses = []
+        for ip in broker_set_new:
+            addresses.append(f'{ip}:{raft_port}')
+        return addresses
+    except:
+        print('can not find other brokers')
+        return []
 
 
 if __name__ == "__main__":
@@ -237,6 +314,9 @@ if __name__ == "__main__":
         # launch heartbeats
         thread = threading.Thread(target=heartbeat, args=(heartbeat_time,))
         thread.start()
+
+        thread1 = threading.Thread(target=broker_add, args=(consensus_time,))
+        #thread1.start()
 
         # set up raft
         message_object = ReplList()
@@ -248,11 +328,17 @@ if __name__ == "__main__":
         s.connect(("8.8.8.8", 80))
         ip = s.getsockname()[0]
         s.close()
-
+        my_ip = ip
+        
+        # give  some time for heartbeats to reach manager
+        time.sleep(3*heartbeat_time)
+        partners = get_broker_list()
+        print(f'{partners=}')
         cfg = SyncObjConf(dynamicMembershipChange = True)
-        syncObj = SyncObj(f'{ip}:{raft_port}', [], cfg, [message_object, offset_object, obj_lock])
+        syncObj = SyncObj(f'{ip}:{raft_port}', partners, cfg, [message_object, offset_object, obj_lock])
 
     # launch request handler
     app.run(host='0.0.0.0',debug=False, threaded=True, processes=1)
     app_kill_event = True
     thread.join()
+    #thread1.join()

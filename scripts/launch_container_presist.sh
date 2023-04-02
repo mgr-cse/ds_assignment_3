@@ -10,7 +10,7 @@ docker run -itd --name $NAME --privileged -v $PWD/:$PWD/:rw localhost/ds_queue_3
 sleep 5
 
 # run application
-docker exec -itd $NAME /bin/bash -c "sudo -iu mattie /bin/bash -c 'cd $PWD; source 01-env/bin/activate; python $FILE $@'"
+docker exec -itd $NAME /bin/bash -c "sudo -iu mattie /bin/bash -c 'cd $PWD; source 01-env/bin/activate; python $FILE $@ > ~/flask.log 2> ~/flask.err'"
 
 #echo stopping container
 # clear container on quit
