@@ -370,41 +370,31 @@ def producer_enqueue():
         }
         
         if producer.partition_id == -1:
-            # produce to any random implicit partition, with good health
-            brokers = Broker.query.filter_by(health=1).all()
-            for _ in range(max_tries):
-                if len(brokers) < 1: continue
-                random_choice = random.randint(0, len(brokers)-1)
-                broker = brokers[random_choice]
-                ip = broker.ip
-                port = broker.port
-
-                request_content['partition_id'] = -1
-                try:
-                    res = requests.post(f'http://{ip}:{port}/store_message', json=request_content)
-                    if res.ok:
-                        response = res.json()
-                        print(response)
-                        if response['status'] == 'success':
-                            return return_message('success')
-                except:
-                    print('exception occured in parsing response/ can not connect')
+            request_content['partition_id'] = -1
         else:
-            # produce to that specific partition
             partition = Partition.query.filter_by(id=producer.partition_id).first()
-            ip = partition.broker.ip
-            port = partition.broker.port
-
             request_content['partition_id'] = partition.id
+
+        # produce to any random replica, with good health
+        brokers = Broker.query.filter_by(health=1).all()
+        for _ in range(max_tries):
+            if len(brokers) < 1: continue
+            random_choice = random.randint(0, len(brokers)-1)
+            broker = brokers[random_choice]
+            ip = broker.ip
+            port = broker.port
             try:
-                res = requests.post('http://' + ip + ":" + str(port) + '/store_message', json=request_content)
+                res = requests.post(f'http://{ip}:{port}/store_message', json=request_content)
                 if res.ok:
                     response = res.json()
+                    print(response)
                     if response['status'] == 'success':
                         return return_message('success')
             except:
                 print('exception occured in parsing response/ can not connect')
-
+            
+            # can't commit, wait till next try
+            time.sleep(2)
         return return_message('failure', 'can not commit to a broker')    
     except:
         traceback.print_exc()
@@ -525,14 +515,7 @@ def consumer_dequeue():
             traceback.print_exc()
 
         # find broker information
-        if consumer.partition_id == -1:
-            brokers = Broker.query.filter_by(health=1).all()
-        else:
-            partition = Partition.query.filter_by(id=consumer.partition_id).first()
-            broker = partition.broker
-            if broker.health != 1:
-                return return_message('failure', 'broker not healthy for requested partition')
-            brokers = [broker]
+        brokers = Broker.query.filter_by(health=1).all()
 
     except:
         traceback.print_exc()
@@ -554,6 +537,10 @@ def consumer_dequeue():
             else: print(f'invalid response code: {res.status_code}')
         except:
             traceback.print_exc()
+        
+        # timeout for next try
+        time.sleep(2)
+        
     return return_message('failure', 'max tries reached')
 
 # metadata sync
