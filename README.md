@@ -1,7 +1,7 @@
 # ds_assignment_2
 
 Distributed Queue assignment
-Report is in `report.pdf`, please download it from https://raw.githubusercontent.com/mgr-cse/ds_assignment_2/main/report.pdf
+Report is in `report.pdf`, please download it from https://raw.githubusercontent.com/mgr-cse/ds_assignment_3/main/report.pdf
 
 Raft implementation choosen:
 [bakwc/PySyncObj](https://github.com/bakwc/PySyncObj) from [raft.github.io](https://raft.github.io/)
@@ -52,7 +52,13 @@ pip install -r requirements.txt
 ```bash
 ./scripts/create_image.sh
 ```
-## Running test
+## Running test for Part 1
+
+```bash
+python ./tests/test/atm_test.py
+```
+    
+## Running test for Part 2
 
 ```bash
 ./tests/test/test.sh
